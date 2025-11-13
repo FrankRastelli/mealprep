@@ -6,6 +6,7 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
+import { RecipeActions } from "./recipe-actions";
 
 export default async function RecipeDetail({
   params,
@@ -42,12 +43,20 @@ export default async function RecipeDetail({
       </Link>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-2">
           <CardTitle className="text-xl">{data.title}</CardTitle>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500">
             {new Date(data.created_at!).toLocaleString()}
           </p>
+          {/* Edit/Delete controls */}
+          <RecipeActions
+            recipeId={data.id}
+            initialTitle={data.title}
+            initialIngredients={data.ingredients}
+            initialInstructions={data.instructions}
+          />
         </CardHeader>
+
         <CardContent className="space-y-6">
           <section className="space-y-2">
             <h2 className="text-sm font-semibold text-slate-800">
