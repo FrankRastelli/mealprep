@@ -32,6 +32,10 @@ export default async function AppLayout({
         Recipes
       </Link>
 
+      <Link href="/app/planner" className="hover:underline">
+       Planner
+      </Link>
+
       <form action="/auth/signout" method="post">
         <button
           type="submit"
