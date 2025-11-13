@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 
 export default function NewRecipeForm() {
   const [title, setTitle] = useState("");
@@ -23,56 +27,77 @@ export default function NewRecipeForm() {
     });
 
     setSaving(false);
+
     if (!res.ok) {
-      const { error } = await res.json().catch(() => ({ error: "Failed" }));
-      setError(error || "Failed to save");
+      const body = await res.json().catch(() => ({}));
+      setError(body.error || "Failed to save recipe");
       return;
     }
 
-    // Clear form and refresh list
-    setTitle(""); setIngredients(""); setInstructions("");
+    // clear form + refresh list
+    setTitle("");
+    setIngredients("");
+    setInstructions("");
     router.refresh();
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 border rounded p-4">
-      <h2 className="text-lg font-medium">Add a Recipe</h2>
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>Add a Recipe</CardTitle>
+        <CardDescription>
+          Save your go-to meals with ingredients and instructions.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Title</label>
+            <Input
+              placeholder="e.g. Chicken Alfredo"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+          </div>
 
-      <input
-        className="w-full border rounded px-3 py-2"
-        placeholder="Title (e.g., Chicken Alfredo)"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        required
-      />
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Ingredients</label>
+            <Textarea
+              placeholder={"One per line:\n- 2 eggs\n- 1 cup milk\n- ..."}
+              rows={4}
+              value={ingredients}
+              onChange={(e) => setIngredients(e.target.value)}
+              required
+            />
+            <p className="text-xs text-slate-500">
+              You can put one ingredient per line for now.
+            </p>
+          </div>
 
-      <textarea
-        className="w-full border rounded px-3 py-2"
-        placeholder="Ingredients (one per line)"
-        rows={4}
-        value={ingredients}
-        onChange={(e) => setIngredients(e.target.value)}
-        required
-      />
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Instructions</label>
+            <Textarea
+              placeholder="Step-by-step instructions..."
+              rows={5}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              required
+            />
+          </div>
 
-      <textarea
-        className="w-full border rounded px-3 py-2"
-        placeholder="Instructions"
-        rows={5}
-        value={instructions}
-        onChange={(e) => setInstructions(e.target.value)}
-        required
-      />
-
-      <button
-        disabled={saving}
-        className="rounded bg-black text-white px-4 py-2 disabled:opacity-60"
-        type="submit"
-      >
-        {saving ? "Saving..." : "Save Recipe"}
-      </button>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-    </form>
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Save Recipe"}
+            </Button>
+            {error && (
+              <p className="text-sm text-red-600">
+                {error}
+              </p>
+            )}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
