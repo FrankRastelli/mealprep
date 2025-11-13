@@ -1,10 +1,11 @@
 import LoginForm from "./login-form";
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { redirect?: string };
+  searchParams: Promise<{ redirect?: string }>;
 }) {
-  const redirectTo = searchParams.redirect ?? "/app";
+  const sp = await searchParams;           // ⬅️ unwrap
+  const redirectTo = sp.redirect ?? "/app";
   return <LoginForm redirectTo={redirectTo} />;
 }
