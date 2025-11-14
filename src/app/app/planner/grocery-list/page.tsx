@@ -3,13 +3,43 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase-server";
 
-// Ingredient structure inside each recipe.
-// We'll adjust this later if your schema is different.
-type RecipeIngredient = {
-  ingredient: string;
-  quantity: string;
-  category: string | null; // e.g. produce, meat, pantry
+type AggregatedItem = {
+  key: string;
+  label: string;
+  quantity: number;
 };
+
+// Parse a free-text ingredient line like "2 eggs" or "1 cup milk"
+function parseIngredientLine(line: string): {
+  key: string;
+  label: string;
+  quantity: number;
+} {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return { key: "", label: "", quantity: 0 };
+  }
+
+  // Look for a leading integer quantity
+  const match = trimmed.match(/^(\d+)\s+(.+)$/);
+  if (!match) {
+    // No leading number → assume quantity 1, label is whole line
+    const label = trimmed;
+    const key = label.toLowerCase();
+    return { key, label, quantity: 1 };
+  }
+
+  const qty = Number(match[1]) || 1;
+  let label = match[2].trim(); // e.g. "eggs", "cup milk"
+
+  // Tiny singularization so "egg" and "eggs" group together
+  if (label.endsWith("s") && !label.endsWith("ss")) {
+    label = label.slice(0, -1);
+  }
+
+  const key = label.toLowerCase();
+  return { key, label, quantity: qty };
+}
 
 export default async function GroceryListPage({
   searchParams,
@@ -59,7 +89,7 @@ export default async function GroceryListPage({
 
   const { weekStartISO, weekEndISO } = getWeekFor(baseDate);
 
-  // Load meal plan entries
+  // Load meal plan entries (with recipe + ingredients)
   const { data: mealEntries } = await supabase
     .from("meal_plan_entry")
     .select(
@@ -80,53 +110,47 @@ export default async function GroceryListPage({
 
   const meals = mealEntries ?? [];
 
-// Aggregate ingredients (simple version: one ingredient per line)
-type AggregatedItem = { ingredient: string; quantity: string; count: number };
+// Gather all raw ingredient lines for this week
+const ingredientLines: string[] = meals.flatMap((entry: any) => {
+  // ingredients is stored as a single text field with one ingredient per line
+  const raw = (entry.recipe?.ingredients ?? "") as string;
+  if (!raw) return [];
 
-const aggregated: Record<string, AggregatedItem[]> = {};
-
-for (const meal of meals) {
-  // recipe.ingredients is stored as plain text in DB
-  const recipe = meal.recipe as { ingredients?: string | null } | null;
-
-  const raw = (recipe?.ingredients ?? "").trim();
-  if (!raw) continue;
-
-  // Each line = one ingredient, e.g.
-  //  - 2 eggs
-  //  - 1 cup milk
-  const lines = raw
-    .split("\n")
+  return raw
+    .split(/\r?\n/)           // split by newline
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean);         // drop empty lines
+});
 
-  for (const line of lines) {
-    const category = "Other"; // we can add real categories later
 
-    if (!aggregated[category]) {
-      aggregated[category] = [];
+  // Aggregate by category → items. For now, everything is "Other".
+  const aggregatedByCategory: Record<string, AggregatedItem[]> = {};
+
+  for (const line of ingredientLines) {
+    const category = "Other"; // we'll add real categories later
+    const parsed = parseIngredientLine(line);
+
+    if (!parsed.label || parsed.quantity <= 0) continue;
+
+    if (!aggregatedByCategory[category]) {
+      aggregatedByCategory[category] = [];
     }
 
-    // If the ingredient already exists, just bump the count
-    const existing = aggregated[category].find(
-      (item) => item.ingredient.toLowerCase() === line.toLowerCase()
-    );
+    const list = aggregatedByCategory[category];
 
+    const existing = list.find((item) => item.key === parsed.key);
     if (existing) {
-      existing.count += 1;
+      existing.quantity += parsed.quantity;
     } else {
-      aggregated[category].push({
-        ingredient: line,
-        quantity: "",
-        count: 1,
+      list.push({
+        key: parsed.key,
+        label: parsed.label,
+        quantity: parsed.quantity,
       });
     }
   }
-}
 
-
-
-  const categories = Object.keys(aggregated).sort();
+  const categories = Object.keys(aggregatedByCategory).sort();
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 py-8">
@@ -149,14 +173,10 @@ for (const meal of meals) {
         {categories.map((category) => (
           <section key={category} className="space-y-2">
             <h2 className="text-lg font-semibold">{category}</h2>
-            <ul className="space-y-1 rounded-md border p-4 bg-muted/30">
-              {aggregated[category].map((item, idx) => (
-                <li
-                  key={idx}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span>{item.ingredient}</span>
-                  <span className="text-muted-foreground">{item.quantity}</span>
+            <ul className="space-y-1 rounded-md border bg-muted/30 p-4 text-sm">
+              {aggregatedByCategory[category]?.map((item) => (
+                <li key={item.key}>
+                  {item.quantity} {item.label}
                 </li>
               ))}
             </ul>
@@ -164,7 +184,7 @@ for (const meal of meals) {
         ))}
 
         {categories.length === 0 && (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             No meals planned for this week.
           </p>
         )}
