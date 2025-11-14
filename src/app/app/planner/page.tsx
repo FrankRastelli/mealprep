@@ -1,40 +1,34 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import DayMeals from "./DayMeals";
+import PlannerBoard, {
+  MealPlanRow,
+  PlannerDay,
+  RecipeRow,
+} from "./PlannerBoard";
 
-type MealPlanRow = {
-  id: string;
-  plan_date: string; // "YYYY-MM-DD"
-  recipe: {
-    id: string;
-    title: string;
-  } | null;
+export const dynamic = "force-dynamic";
+
+type PageProps = {
+  searchParams: Promise<{
+    week?: string;
+  }>;
 };
 
-type RecipeRow = {
-  id: string;
-  title: string;
-};
+// Helper: given a base date, get Monday–Sunday
+function getWeekFor(baseDate: Date) {
+  const jsDay = baseDate.getDay(); // 0 = Sun, 1 = Mon, ...
+  const diffToMonday = (jsDay + 6) % 7; // 0 if Monday, 1 if Tue, ...
 
-
-// Helper: get Monday–Sunday for the current week
-function getCurrentWeek() {
-  const today = new Date();
-  const jsDay = today.getDay(); // 0 = Sun, 1 = Mon, ...
-  const diffToMonday = (jsDay + 6) % 7; // 0 if Monday, 1 if Tuesday, ...
-
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - diffToMonday);
+  const monday = new Date(baseDate);
+  monday.setDate(baseDate.getDate() - diffToMonday);
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     return {
       label: d.toLocaleDateString("en-US", { weekday: "long" }),
-      shortLabel: d.toLocaleDateString("en-US", { weekday: "short" }),
       isoDate: d.toISOString().slice(0, 10), // YYYY-MM-DD
     };
   });
@@ -46,7 +40,7 @@ function getCurrentWeek() {
   };
 }
 
-export default async function MealPlannerPage() {
+export default async function MealPlannerPage({ searchParams }: PageProps) {
   const supabase = await createClient();
 
   const {
@@ -54,12 +48,33 @@ export default async function MealPlannerPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    // Just in case layout didn't already protect this
     redirect("/login?redirect=/app/planner");
   }
 
-  const { days, weekStartISO, weekEndISO } = getCurrentWeek();
+  // Read ?week=YYYY-MM-DD from the URL (Next 16: searchParams is a Promise)
+  const { week } = await searchParams;
 
+  let baseDate = new Date();
+  if (week) {
+    const parsed = new Date(week);
+    if (!Number.isNaN(parsed.getTime())) {
+      baseDate = parsed;
+    }
+  }
+
+  const { days, weekStartISO, weekEndISO } = getWeekFor(baseDate);
+
+  // Compute prev/next week Monday dates for links
+  const currentMonday = new Date(days[0].isoDate);
+  const prevMonday = new Date(currentMonday);
+  prevMonday.setDate(currentMonday.getDate() - 7);
+  const nextMonday = new Date(currentMonday);
+  nextMonday.setDate(currentMonday.getDate() + 7);
+
+  const prevWeekParam = prevMonday.toISOString().slice(0, 10);
+  const nextWeekParam = nextMonday.toISOString().slice(0, 10);
+
+  // Load entries for this week
   const { data: entries, error } = await supabase
     .from("meal_plan_entry")
     .select(
@@ -77,7 +92,22 @@ export default async function MealPlannerPage() {
     .lte("plan_date", weekEndISO)
     .order("plan_date", { ascending: true });
 
-    const { data: recipesData } = await supabase
+  if (error) {
+    console.error("Error loading meal plan:", error);
+  }
+
+  const rows = (entries ?? []) as unknown as MealPlanRow[];
+
+  // Group by date
+  const byDate = new Map<string, MealPlanRow[]>();
+  for (const entry of rows) {
+    const key = entry.plan_date;
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key)!.push(entry);
+  }
+
+  // Load all recipes for this user
+  const { data: recipesData } = await supabase
     .from("recipe")
     .select("id, title")
     .eq("user_id", user.id)
@@ -85,27 +115,14 @@ export default async function MealPlannerPage() {
 
   const recipes = (recipesData ?? []) as RecipeRow[];
 
-
-  if (error) {
-    console.error("Error loading meal plan:", error);
-  }
-
-  const byDate = new Map<string, MealPlanRow[]>();
-
-  // Tell TypeScript what shape the rows have
-  const rows = (entries ?? []) as unknown as MealPlanRow[];
-
-  for (const entry of rows) {
-    const key = entry.plan_date;
-    if (!byDate.has(key)) {
-      byDate.set(key, []);
-    }
-    byDate.get(key)!.push(entry);
-  }
-
+  const plannerDays: PlannerDay[] = days.map((d) => ({
+    isoDate: d.isoDate,
+    label: d.label,
+    meals: byDate.get(d.isoDate) ?? [],
+  }));
 
   return (
-    <div className="space-y-8 py-8">
+    <div className="space-y-4">
       {/* Top header */}
       <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -124,47 +141,42 @@ export default async function MealPlannerPage() {
         </div>
       </header>
 
-      {/* Week range summary */}
-      <p className="text-xs text-muted-foreground">
-        Week of{" "}
-        <span className="font-medium">
-          {days[0].label} ({days[0].isoDate})
-        </span>{" "}
-        –{" "}
-        <span className="font-medium">
-          {days[6].label} ({days[6].isoDate})
-        </span>
-      </p>
+      {/* Week navigation + summary */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <Link href={`/app/planner?week=${prevWeekParam}`}>
+            <Button size="sm" variant="outline">
+              ← Previous week
+            </Button>
+          </Link>
+          <Link href={`/app/planner?week=${nextWeekParam}`}>
+            <Button size="sm" variant="outline">
+              Next week →
+            </Button>
+          </Link>
+        </div>
 
-      {/* Week grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {days.map((day) => {
-          const meals = byDate.get(day.isoDate) ?? [];
+        <Link href={`/app/planner/grocery-list?week=${weekStartISO}`}>
+        <Button variant="default" size="sm">
+            Generate Grocery List
+        </Button>
+        </Link>
 
-          return (
-            <Card key={day.isoDate} className="flex flex-col">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-baseline justify-between text-base font-semibold">
-                  <span>{day.label}</span>
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {day.isoDate}
-                  </span>
-                </CardTitle>
-              </CardHeader>
 
-                <CardContent className="flex flex-1 flex-col justify-between gap-3 text-sm">
-                <DayMeals
-                    isoDate={day.isoDate}
-                    dayLabel={day.label}
-                    meals={meals}
-                    recipes={recipes}
-                />
-                </CardContent>
-
-            </Card>
-          );
-        })}
+        <p>
+          Week of{" "}
+          <span className="font-medium">
+            {days[0].label} ({days[0].isoDate})
+          </span>{" "}
+          –{" "}
+          <span className="font-medium">
+            {days[6].label} ({days[6].isoDate})
+          </span>
+        </p>
       </div>
+
+      {/* DnD planner grid */}
+      <PlannerBoard days={plannerDays} recipes={recipes} />
     </div>
   );
 }

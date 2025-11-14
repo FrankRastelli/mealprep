@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { Button } from "@/components/ui/button";
 
 type MealPlanRow = {
@@ -38,6 +39,11 @@ export default function DayMeals({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // This day is a droppable area
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: isoDate, // droppable id = the date
+  });
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -92,42 +98,24 @@ export default function DayMeals({
 
   return (
     <div className="space-y-3">
-      {/* List of meals for this day */}
-      <div className="space-y-2 text-sm">
+      {/* Drop zone area */}
+      <div
+        ref={setDropRef}
+        className={`space-y-2 rounded-md p-1 text-sm ${
+          isOver ? "bg-muted/60" : ""
+        }`}
+      >
         {meals.length === 0 ? (
           <p className="text-muted-foreground">No meals planned yet.</p>
         ) : (
           <ul className="space-y-2">
             {meals.map((meal) => (
-              <li
+              <DraggableMeal
                 key={meal.id}
-                className="flex items-start justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2"
-              >
-                <div>
-                  {meal.recipe ? (
-                    <Link
-                      href={`/app/recipes/${meal.recipe.id}`}
-                      className="font-medium underline-offset-2 hover:underline"
-                    >
-                      {meal.recipe.title}
-                    </Link>
-                  ) : (
-                    <span className="font-medium text-muted-foreground">
-                      (Missing recipe)
-                    </span>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-red-600 hover:text-red-700"
-                  onClick={() => handleDelete(meal.id)}
-                  disabled={deletingId === meal.id}
-                >
-                  {deletingId === meal.id ? "Removing..." : "Remove"}
-                </Button>
-              </li>
+                meal={meal}
+                onDelete={() => handleDelete(meal.id)}
+                deleting={deletingId === meal.id}
+              />
             ))}
           </ul>
         )}
@@ -193,5 +181,75 @@ export default function DayMeals({
         </form>
       )}
     </div>
+  );
+}
+
+function DraggableMeal({
+  meal,
+  onDelete,
+  deleting,
+}: {
+  meal: MealPlanRow;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: meal.id,
+    data: { date: meal.plan_date }, // tells DndContext which day it came from
+  });
+
+  const style: React.CSSProperties = {
+    transform: transform
+      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+      : undefined,
+    opacity: isDragging ? 0.6 : 1,
+    cursor: "grab",
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="flex items-start justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2"
+    >
+      <div>
+        {meal.recipe ? (
+          <Link
+            href={`/app/recipes/${meal.recipe.id}`}
+            className="font-medium underline-offset-2 hover:underline"
+          >
+            {meal.recipe.title}
+          </Link>
+        ) : (
+          <span className="font-medium text-muted-foreground">
+            (Missing recipe)
+          </span>
+        )}
+      </div>
+        <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="text-xs text-red-600 hover:text-red-700"
+        disabled={deleting}
+        // prevent drag from hijacking this interaction
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+        }}
+        >
+        {deleting ? "Removing..." : "Remove"}
+        </Button>
+    </li>
   );
 }
