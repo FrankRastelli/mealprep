@@ -37,6 +37,7 @@ export default function DayMeals({
   const [recipeId, setRecipeId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +68,28 @@ export default function DayMeals({
     router.refresh(); // reloads server data
   }
 
+  async function handleDelete(mealId: string) {
+    const sure = window.confirm("Remove this meal from the plan?");
+    if (!sure) return;
+
+    setDeletingId(mealId);
+    setError(null);
+
+    const res = await fetch(`/api/meal-plan/${mealId}`, {
+      method: "DELETE",
+    });
+
+    setDeletingId(null);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error || "Failed to delete meal");
+      return;
+    }
+
+    router.refresh();
+  }
+
   return (
     <div className="space-y-3">
       {/* List of meals for this day */}
@@ -78,25 +101,42 @@ export default function DayMeals({
             {meals.map((meal) => (
               <li
                 key={meal.id}
-                className="rounded-md border bg-muted/40 px-3 py-2"
+                className="flex items-start justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2"
               >
-                {meal.recipe ? (
-                  <Link
-                    href={`/app/recipes/${meal.recipe.id}`}
-                    className="font-medium underline-offset-2 hover:underline"
-                  >
-                    {meal.recipe.title}
-                  </Link>
-                ) : (
-                  <span className="font-medium text-muted-foreground">
-                    (Missing recipe)
-                  </span>
-                )}
+                <div>
+                  {meal.recipe ? (
+                    <Link
+                      href={`/app/recipes/${meal.recipe.id}`}
+                      className="font-medium underline-offset-2 hover:underline"
+                    >
+                      {meal.recipe.title}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-muted-foreground">
+                      (Missing recipe)
+                    </span>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-red-600 hover:text-red-700"
+                  onClick={() => handleDelete(meal.id)}
+                  disabled={deletingId === meal.id}
+                >
+                  {deletingId === meal.id ? "Removing..." : "Remove"}
+                </Button>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {/* Error, if any */}
+      {error && (
+        <p className="text-xs text-red-600">{error}</p>
+      )}
 
       {/* Add form or button */}
       {!showForm ? (
@@ -126,10 +166,6 @@ export default function DayMeals({
               ))}
             </select>
           </div>
-
-          {error && (
-            <p className="text-xs text-red-600">{error}</p>
-          )}
 
           <div className="flex gap-2">
             <Button
