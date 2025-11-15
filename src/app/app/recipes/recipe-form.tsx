@@ -2,10 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { FoodSearch } from "./FoodSearch";
 
 export default function NewRecipeForm() {
   const [title, setTitle] = useState("");
@@ -14,6 +21,15 @@ export default function NewRecipeForm() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+
+  // When a food is chosen from the search results,
+  // append a nicely formatted line into the ingredients textarea.
+  function handleAddIngredientLine(line: string) {
+    setIngredients((prev) => {
+      if (!prev.trim()) return line;
+      return `${prev}\n${line}`;
+    });
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,7 +66,7 @@ export default function NewRecipeForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-6">
           <div className="space-y-1">
             <label className="text-sm font-medium">Title</label>
             <Input
@@ -61,18 +77,29 @@ export default function NewRecipeForm() {
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Ingredients</label>
-            <Textarea
-              placeholder={"One per line:\n- 2 eggs\n- 1 cup milk\n- ..."}
-              rows={4}
-              value={ingredients}
-              onChange={(e) => setIngredients(e.target.value)}
-              required
-            />
-            <p className="text-xs text-slate-500">
-              You can put one ingredient per line for now.
-            </p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Ingredients</label>
+              <Textarea
+                placeholder={"One per line:\n- 2 eggs\n- 1 cup milk\n- ..."}
+                rows={4}
+                value={ingredients}
+                onChange={(e) => setIngredients(e.target.value)}
+                required
+              />
+              <p className="text-xs text-slate-500">
+                You can type your own ingredients, or use the food search below
+                to insert items with macros.
+              </p>
+            </div>
+
+            {/* Food search helper */}
+            <div className="rounded-md border bg-muted/40 p-3">
+              <p className="mb-2 text-xs font-medium text-slate-600">
+                Search foods to add:
+              </p>
+                <FoodSearch onAdd={handleAddIngredientLine} />
+            </div>
           </div>
 
           <div className="space-y-1">
@@ -90,11 +117,7 @@ export default function NewRecipeForm() {
             <Button type="submit" disabled={saving}>
               {saving ? "Saving..." : "Save Recipe"}
             </Button>
-            {error && (
-              <p className="text-sm text-red-600">
-                {error}
-              </p>
-            )}
+            {error && <p className="text-sm text-red-600">{error}</p>}
           </div>
         </form>
       </CardContent>
